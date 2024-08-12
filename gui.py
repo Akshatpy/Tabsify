@@ -3,7 +3,7 @@ from tkinter import filedialog, messagebox, simpledialog
 import librosa
 import numpy as np
 from bs4 import BeautifulSoup
-import yt_dlpac
+import yt_dlp
 import os
 from selenium import webdriver
 GUITAR_TABS = {
@@ -46,25 +46,18 @@ def download_as_mp3(youtube_url, output_filename, ffmpeg_path=r'C:\ffmpeg-7.0.2-
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
-
 def analyze_audio(file_path):
-    notes_o = aubio.notes("default", 2048, 512, 44100)
-    audio_file = aubio.source(file_path)
-
+    y, sr = librosa.load(file_path, sr=None)
+    pitches, magnitudes = librosa.core.piptrack(y=y, sr=sr)
     notes = []
-    total_frames = 0
-
-    while True:
-        samples, read = audio_file()
-        if notes_o(samples):
-            note = notes_o(samples)[0]
-            notes.append(note)
-        total_frames += read
-        if read < 512:
-            break
-
+    for t in range(pitches.shape[1]):
+        index = magnitudes[:, t].argmax()
+        pitch = pitches[index, t]
+        if pitch > 0:
+            note = get_note_name(pitch)
+            if note in GUITAR_TABS:
+                notes.append(GUITAR_TABS[note])
     return notes
-
 def get_note_name(frequency):
     A4 = 440.0
     half_steps = int(round(12 * np.log2(frequency / A4)))
@@ -76,6 +69,7 @@ def get_note_name(frequency):
 def generate_tab_string(tabs):
     strings = ['E', 'B', 'G', 'D', 'A', 'E']
     tab_lines = {s: ['-'] * 30 for s in strings}
+
     for tab in tabs:
         string, fret = map(int, tab.split('/'))
         string_idx = 6 - string
@@ -85,9 +79,10 @@ def generate_tab_string(tabs):
         tab_display.append(s + '|' + ''.join(tab_lines[s]))
 
     return "\n".join(tab_display)
+
 def display_tabs(tabs):
     tab_string = generate_tab_string(tabs)
-    print("Guitar Tabs", tab_string if tabs else "No recognizable guitar tabs detected.")
+    messagebox.showinfo("Guitar Tabs", tab_string if tabs else "No recognizable guitar tabs detected.")
 def view_dir():
     files = [file for file in os.listdir('./') if file.endswith('.mp3')]
     if files:
@@ -104,14 +99,13 @@ def del_song():
             messagebox.showinfo("Delete Song", "Deleted successfully.")
         else:
             messagebox.showwarning("Delete Song", "SONG NOT IN DIRECTORY")
+
 def view_tabs_of_existing_song():
     file_path = filedialog.askopenfilename(filetypes=[("MP3 files", "*.mp3")])
     if file_path:
         print("Analyzing")
         notes = analyze_audio(file_path)
         display_tabs(notes)
-
-# Define button actions
 def view_downloaded_songs():
     view_dir()
 def search_for_new_song():
@@ -131,6 +125,7 @@ def search_for_new_song():
 
 def delete_song():
     del_song()
+
 def quit_app():
     root.quit()
 root = tk.Tk()
